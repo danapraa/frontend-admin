@@ -29,6 +29,7 @@ import {
   User,
   WifiOff,
   ServerCrash,
+  Download,
 } from "lucide-react";
 import apiBissaKerja from "@/lib/api-bissa-kerja";
 
@@ -149,6 +150,20 @@ export default function AllApplicantsPage() {
   const [selectedApplicant, setSelectedApplicant] =
     useState<JobApplication | null>(null);
   const [showApplicantModal, setShowApplicantModal] = useState<boolean>(false);
+
+  // Notification state
+  const [notification, setNotification] = useState<{
+    show: boolean;
+    type: "success" | "error";
+    message: string;
+  }>({ show: false, type: "success", message: "" });
+
+  const showNotification = (type: "success" | "error", message: string) => {
+    setNotification({ show: true, type, message });
+    setTimeout(() => {
+      setNotification((prev) => ({ ...prev, show: false }));
+    }, 5000);
+  };
 
   useEffect(() => {
     fetchAllData();
@@ -329,6 +344,79 @@ export default function AllApplicantsPage() {
     await fetchAllData();
   };
 
+  // Export function for applicants data
+  const handleExport = async () => {
+    try {
+      if (filteredApplications.length === 0) {
+        showNotification("error", "Tidak ada data untuk diekspor");
+        return;
+      }
+
+      // Create CSV content from filtered data
+      const headers = [
+        "No",
+        "Nama Pelamar",
+        "Email",
+        "Posisi",
+        "Perusahaan",
+        "Industri",
+        "Lokasi",
+        "Tipe Kerja",
+        "Status",
+        "Gaji",
+        "Pendidikan",
+        "Pengalaman",
+        "Tanggal Melamar",
+        "Kategori Disabilitas",
+        "Tingkat Disabilitas",
+        "Feedback",
+      ];
+
+      const csvContent = [
+        headers.join(","),
+        ...filteredApplications.map((app: JobApplication, index: number) => [
+          index + 1,
+          `"${app.user.name}"`,
+          `"${app.user.email}"`,
+          `"${app.lowongan.job_title}"`,
+          `"${app.lowongan.perusahaan_profile?.nama_perusahaan || "N/A"}"`,
+          `"${app.lowongan.perusahaan_profile?.industri || "N/A"}"`,
+          `"${app.lowongan.location}"`,
+          `"${app.lowongan.job_type}"`,
+          `"${getStatusConfig(app.status).label}"`,
+          `"${app.lowongan.salary_range}"`,
+          `"${app.lowongan.education}"`,
+          `"${app.lowongan.experience}"`,
+          `"${formatDate(app.applied_at || app.created_at)}"`,
+          `"${app.lowongan.disabilitas?.map(d => d.kategori_disabilitas).join("; ") || "N/A"}"`,
+          `"${app.lowongan.disabilitas?.map(d => d.tingkat_disabilitas).join("; ") || "N/A"}"`,
+          `"${app.feedback || "N/A"}"`,
+        ].join(",")),
+      ].join("\n");
+
+      // Create and download file
+      const blob = new Blob([csvContent], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `data-pelamar-${new Date().toISOString().split("T")[0]}.csv`
+      );
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showNotification("success", "Data berhasil diekspor");
+    } catch (error: any) {
+      showNotification("error", "Terjadi kesalahan saat mengekspor data");
+    }
+  };
+
   const formatDate = (dateString: string | null): string => {
     if (!dateString) return "N/A";
 
@@ -403,6 +491,39 @@ export default function AllApplicantsPage() {
       "&background=6366f1&color=fff&size=128";
   };
 
+  // Notification component
+  const renderNotification = () =>
+    notification.show && (
+      <div
+        className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
+          notification.type === "success"
+            ? "bg-green-100 border border-green-500 text-green-700"
+            : "bg-red-100 border border-red-500 text-red-700"
+        }`}
+      >
+        <div className="flex items-center">
+          {notification.type === "success" ? (
+            <div className="w-5 h-5 rounded-full bg-green-500 text-white flex items-center justify-center mr-3">
+              <span className="text-xs">✓</span>
+            </div>
+          ) : (
+            <div className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center mr-3">
+              <span className="text-xs">!</span>
+            </div>
+          )}
+          <span className="font-medium">{notification.message}</span>
+          <button
+            onClick={() =>
+              setNotification((prev) => ({ ...prev, show: false }))
+            }
+            className="ml-4 text-gray-500 hover:text-gray-700"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
+
   // Loading state
   if (loading) {
     return (
@@ -433,6 +554,9 @@ export default function AllApplicantsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+      {/* Notification */}
+      {renderNotification()}
+
       <PageBreadcrumb pageTitle="Data Pelamar" />
 
       <div className="container mx-auto py-6 space-y-6">
@@ -453,16 +577,26 @@ export default function AllApplicantsPage() {
                 Semua data pelamar dari seluruh perusahaan yang terdaftar
               </p>
             </div>
-            <button
-              onClick={handleRefresh}
-              disabled={loading}
-              className="flex items-center px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw
-                className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
-              />
-              Refresh
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleExport}
+                disabled={loading || filteredApplications.length === 0}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export
+              </button>
+              <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className="flex items-center px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
 
@@ -581,7 +715,7 @@ export default function AllApplicantsPage() {
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500 pointer-events-none" />
             </div>
 
-            {/* Company Filter */}
+            {/* Sort Filter */}
             <div className="relative">
               <select
                 value={sortBy}

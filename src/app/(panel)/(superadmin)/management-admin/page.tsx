@@ -14,6 +14,7 @@ import {
   X,
   Save,
   Loader2,
+  Download,
 } from "lucide-react";
 import apiBissaKerja from "@/lib/api-bissa-kerja";
 import ManagementAdminSkeleton from "@/skeleton/ManagementAdminSkeleton";
@@ -124,6 +125,13 @@ const ManagementAdminPage: React.FC = () => {
   const [isLoadingRegencies, setIsLoadingRegencies] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  // Notification state
+  const [notification, setNotification] = useState<{
+    show: boolean;
+    type: "success" | "error";
+    message: string;
+  }>({ show: false, type: "success", message: "" });
+
   // Form state
   const [formData, setFormData] = useState<AdminFormData>({
     name: "",
@@ -133,6 +141,71 @@ const ManagementAdminPage: React.FC = () => {
     status: "active",
     regencyId: "",
   });
+
+  // Notification helper
+  const showNotification = (type: "success" | "error", message: string) => {
+    setNotification({ show: true, type, message });
+    setTimeout(() => {
+      setNotification((prev) => ({ ...prev, show: false }));
+    }, 5000);
+  };
+
+  // Export function
+  const handleExport = async (): Promise<void> => {
+    try {
+      if (filteredAdmins.length === 0) {
+        showNotification("error", "Tidak ada data untuk diekspor");
+        return;
+      }
+
+      // Create CSV content from filtered data
+      const headers = [
+        "No",
+        "Nama Admin",
+        "Email",
+        "Status",
+        "Provinsi",
+        "Kabupaten/Kota",
+        "Tanggal Dibuat",
+      ];
+      
+      const csvContent = [
+        headers.join(","),
+        ...filteredAdmins.map((admin: Admin, index: number) =>
+          [
+            index + 1,
+            `"${admin.name}"`,
+            `"${admin.email}"`,
+            `"${getStatusLabel(admin.status)}"`,
+            `"${admin.province || '-'}"`,
+            `"${admin.regency || '-'}"`,
+            `"${admin.createdAt || '-'}"`,
+          ].join(",")
+        ),
+      ].join("\n");
+
+      // Create and download file
+      const blob = new Blob([csvContent], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `data-admin-${new Date().toISOString().split("T")[0]}.csv`
+      );
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showNotification("success", "Data berhasil diekspor");
+    } catch (error: any) {
+      showNotification("error", "Terjadi kesalahan saat mengekspor data");
+    }
+  };
 
   useEffect(() => {
     fetchAdmins();
@@ -448,9 +521,9 @@ const ManagementAdminPage: React.FC = () => {
 
         // Show success message
         if (response.data?.message) {
-          alert(response.data.message);
+          showNotification("success", response.data.message);
         } else {
-          alert("Admin berhasil dibuat!");
+          showNotification("success", "Admin berhasil dibuat!");
         }
 
         await fetchAdmins();
@@ -589,8 +662,44 @@ const ManagementAdminPage: React.FC = () => {
     );
   }
 
+  // Notification component
+  const renderNotification = () =>
+    notification.show && (
+      <div
+        className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
+          notification.type === "success"
+            ? "bg-green-100 border border-green-500 text-green-700"
+            : "bg-red-100 border border-red-500 text-red-700"
+        }`}
+      >
+        <div className="flex items-center">
+          {notification.type === "success" ? (
+            <div className="w-5 h-5 rounded-full bg-green-500 text-white flex items-center justify-center mr-3">
+              <span className="text-xs">✓</span>
+            </div>
+          ) : (
+            <div className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center mr-3">
+              <span className="text-xs">!</span>
+            </div>
+          )}
+          <span className="font-medium">{notification.message}</span>
+          <button
+            onClick={() =>
+              setNotification((prev) => ({ ...prev, show: false }))
+            }
+            className="ml-4 text-gray-500 hover:text-gray-700"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Notification */}
+      {renderNotification()}
+
       <PageBreadcrumb pageTitle="Manajemen Admin" />
 
       <div className="space-y-4 sm:space-y-6">
@@ -605,13 +714,23 @@ const ManagementAdminPage: React.FC = () => {
                 Kelola akun administrator sistem
               </p>
             </div>
-            <button
-              onClick={openCreateModal}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="sm:inline">Tambah Admin</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleExport}
+                disabled={isLoading || filteredAdmins.length === 0}
+                className="inline-flex items-center px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download size={16} className="mr-2" />
+                Export
+              </button>
+              <button
+                onClick={openCreateModal}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="sm:inline">Tambah Admin</span>
+              </button>
+            </div>
           </div>
         </div>
 

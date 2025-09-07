@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Eye,
   Briefcase,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import apiBissaKerja from "@/lib/api-bissa-kerja";
@@ -229,6 +230,21 @@ export default function DataLowonganPage() {
   const [selectedJobType, setSelectedJobType] = useState<string>("");
   const [selectedIndustry, setSelectedIndustry] = useState<string>("");
 
+  // Notification state
+  const [notification, setNotification] = useState<{
+    show: boolean;
+    type: "success" | "error";
+    message: string;
+  }>({ show: false, type: "success", message: "" });
+
+  // Notification function
+  const showNotification = (type: "success" | "error", message: string) => {
+    setNotification({ show: true, type, message });
+    setTimeout(() => {
+      setNotification((prev) => ({ ...prev, show: false }));
+    }, 5000);
+  };
+
   // Helper function to get company logo URL
   const getCompanyLogoUrl = (
     logo: string | null,
@@ -239,6 +255,81 @@ export default function DataLowonganPage() {
     }
     const encodedName = encodeURIComponent(companyName);
     return `https://ui-avatars.com/api/?name=${encodedName}&length=2`;
+  };
+
+  // Export function
+  const handleExport = async () => {
+    try {
+      if (filteredJobs.length === 0) {
+        showNotification("error", "Tidak ada data untuk diekspor");
+        return;
+      }
+
+      // Create CSV content from filtered data
+      const headers = [
+        "No",
+        "Posisi Pekerjaan",
+        "Nama Perusahaan",
+        "Industri",
+        "Tipe Pekerjaan",
+        "Lokasi",
+        "Pendidikan",
+        "Pengalaman",
+        "Rentang Gaji",
+        "Keahlian",
+        "Batas Lamaran",
+        "Status Perusahaan",
+        "Dukungan Disabilitas",
+        "Tanggal Posting"
+      ];
+
+      const csvContent = [
+        headers.join(","),
+        ...filteredJobs.map((job: JobVacancy, index: number) => {
+          const skills = job.skills.join("; ");
+          const disabilitas = job.disabilitas.map(d => d.kategori_disabilitas).join("; ");
+          const createdDate = job.created_at ? new Date(job.created_at).toLocaleDateString("id-ID") : "-";
+          
+          return [
+            index + 1,
+            `"${job.job_title}"`,
+            `"${job.perusahaan_profile.nama_perusahaan}"`,
+            `"${job.perusahaan_profile.industri}"`,
+            `"${job.job_type}"`,
+            `"${job.location}"`,
+            `"${job.education}"`,
+            `"${job.experience}"`,
+            `"${job.salary_range || "Kompetitif"}"`,
+            `"${skills}"`,
+            `"${new Date(job.application_deadline).toLocaleDateString("id-ID")}"`,
+            `"${job.perusahaan_profile.status_verifikasi === "verified" ? "Terverifikasi" : "Belum Terverifikasi"}"`,
+            `"${disabilitas || "Tidak Ada"}"`,
+            `"${createdDate}"`
+          ].join(",");
+        }),
+      ].join("\n");
+
+      // Create and download file
+      const blob = new Blob([csvContent], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `data-lowongan-pekerjaan-${new Date().toISOString().split("T")[0]}.csv`
+      );
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showNotification("success", "Data berhasil diekspor");
+    } catch (error: any) {
+      showNotification("error", "Terjadi kesalahan saat mengekspor data");
+    }
   };
 
   // Fetch all jobs data from API
@@ -546,10 +637,44 @@ export default function DataLowonganPage() {
     (job) => calculateDaysRemaining(job.application_deadline) > 0
   ).length;
 
+  // Notification render
+  const renderNotification = () =>
+    notification.show && (
+      <div
+        className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
+          notification.type === "success"
+            ? "bg-green-100 border border-green-500 text-green-700"
+            : "bg-red-100 border border-red-500 text-red-700"
+        }`}
+      >
+        <div className="flex items-center">
+          {notification.type === "success" ? (
+            <div className="w-5 h-5 rounded-full bg-green-500 text-white flex items-center justify-center mr-3">
+              <span className="text-xs">✓</span>
+            </div>
+          ) : (
+            <div className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center mr-3">
+              <span className="text-xs">!</span>
+            </div>
+          )}
+          <span className="font-medium">{notification.message}</span>
+          <button
+            onClick={() =>
+              setNotification((prev) => ({ ...prev, show: false }))
+            }
+            className="ml-4 text-gray-500 hover:text-gray-700"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
+
   // Error state
   if (error) {
     return (
       <div>
+        {renderNotification()}
         <PageBreadcrumb pageTitle="Data Lowongan Pekerjaan" />
         <div className="space-y-6">
           <ComponentCard
@@ -593,6 +718,7 @@ export default function DataLowonganPage() {
 
   return (
     <div>
+      {renderNotification()}
       <PageBreadcrumb pageTitle="Data Lowongan Pekerjaan" />
       <div className="space-y-6">
         <ComponentCard
@@ -603,6 +729,28 @@ export default function DataLowonganPage() {
             <EmptyState onRefresh={handleRetry} />
           ) : (
             <div className="mx-auto">
+              {/* Header with Export Button */}
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Daftar Lowongan Pekerjaan
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400 mt-1">
+                    Total {filteredJobs.length} lowongan dari {totalCompanies} perusahaan
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleExport}
+                    disabled={loading || filteredJobs.length === 0}
+                    className="inline-flex items-center px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Download size={16} className="mr-2" />
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+
               {/* Stats */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                 <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
@@ -727,25 +875,27 @@ export default function DataLowonganPage() {
                 </div>
 
                 {/* Filter Results Info */}
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Menampilkan {filteredJobs.length} dari {totalJobs} lowongan
-                  pekerjaan
-                  {(searchTerm ||
-                    selectedLocation ||
-                    selectedJobType ||
-                    selectedIndustry) && (
-                    <button
-                      onClick={() => {
-                        setSearchTerm("");
-                        setSelectedLocation("");
-                        setSelectedJobType("");
-                        setSelectedIndustry("");
-                      }}
-                      className="ml-2 text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      Reset Filter
-                    </button>
-                  )}
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Menampilkan {filteredJobs.length} dari {totalJobs} lowongan
+                    pekerjaan
+                    {(searchTerm ||
+                      selectedLocation ||
+                      selectedJobType ||
+                      selectedIndustry) && (
+                      <button
+                        onClick={() => {
+                          setSearchTerm("");
+                          setSelectedLocation("");
+                          setSelectedJobType("");
+                          setSelectedIndustry("");
+                        }}
+                        className="ml-2 text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        Reset Filter
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -901,7 +1051,7 @@ export default function DataLowonganPage() {
                       </div>
 
                       {/* Deadline and Company Verification Status */}
-                      {/* <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-2">
                           <div
                             className={`px-2 py-1 rounded-full text-xs font-medium ${getDeadlineColorClass(
@@ -924,7 +1074,7 @@ export default function DataLowonganPage() {
                         >
                           {formatDate(job.application_deadline)}
                         </time>
-                      </div> */}
+                      </div>
                     </article>
                   );
                 })}
