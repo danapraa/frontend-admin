@@ -22,6 +22,9 @@ import {
   FileText,
   ExternalLink,
   Image as ImageIcon,
+  CheckCircle,
+  XCircle,
+  Clock,
 } from "lucide-react";
 import apiBissaKerja from "@/lib/api-bissa-kerja";
 import ManagementCompanySkeleton from "@/skeleton/ManagementCompanySkeleton";
@@ -73,6 +76,9 @@ interface CompanyApiResponse {
   youtube: string;
   tiktok: string;
   status_verifikasi: string;
+  catatan_verifikasi?: string;
+  verified_at?: string;
+  verified_by?: number;
   user_id: number;
   created_at: string;
   updated_at: string;
@@ -100,6 +106,8 @@ interface Company {
   tahunBerdiri?: string;
   website?: string;
   statusVerifikasi?: string;
+  catatanVerifikasi?: string;
+  verifiedAt?: string;
 }
 
 interface CompanyFormData {
@@ -147,9 +155,9 @@ const ManagementCompanyPage: React.FC = () => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [showDetailModal, setShowDetailModal] = useState<boolean>(false);
+  const [showVerificationModal, setShowVerificationModal] = useState<boolean>(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
-  const [selectedCompanyDetail, setSelectedCompanyDetail] =
-    useState<CompanyApiResponse | null>(null);
+  const [selectedCompanyDetail, setSelectedCompanyDetail] = useState<CompanyApiResponse | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -162,6 +170,10 @@ const ManagementCompanyPage: React.FC = () => {
   const [isLoadingProvinces, setIsLoadingProvinces] = useState<boolean>(false);
   const [isLoadingRegencies, setIsLoadingRegencies] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Verification states
+  const [verificationStatus, setVerificationStatus] = useState<string>("");
+  const [verificationNote, setVerificationNote] = useState<string>("");
 
   // Form state
   const [formData, setFormData] = useState<CompanyFormData>({
@@ -239,6 +251,8 @@ const ManagementCompanyPage: React.FC = () => {
       tahunBerdiri: item.tahun_berdiri,
       website: item.link_website,
       statusVerifikasi: item.status_verifikasi,
+      catatanVerifikasi: item.catatan_verifikasi,
+      verifiedAt: item.verified_at,
     }));
   };
 
@@ -347,6 +361,61 @@ const ManagementCompanyPage: React.FC = () => {
     }
   };
 
+  // Verification functions
+  const openVerificationModal = (company: Company): void => {
+    setSelectedCompany(company);
+    setVerificationStatus(company.statusVerifikasi || "belum_verifikasi");
+    setVerificationNote(company.catatanVerifikasi || "");
+    setError("");
+    setShowVerificationModal(true);
+  };
+
+  const closeVerificationModal = (): void => {
+    setShowVerificationModal(false);
+    setSelectedCompany(null);
+    setVerificationStatus("");
+    setVerificationNote("");
+    setError("");
+  };
+
+  const handleVerification = async (): Promise<void> => {
+    if (!selectedCompany) return;
+
+    try {
+      setIsSubmitting(true);
+      setError("");
+
+      const response = await apiBissaKerja.patch(
+        `account-management/company-verification/${selectedCompany.id}`,
+        {
+          status_verifikasi: verificationStatus,
+          catatan_verifikasi: verificationNote.trim() || null
+        }
+      );
+
+      if (response.data?.message) {
+        alert(response.data.message);
+      } else {
+        alert("Status verifikasi berhasil diperbarui!");
+      }
+
+      // Refresh data perusahaan
+      await fetchCompanies();
+      closeVerificationModal();
+
+    } catch (error: any) {
+      console.error("Failed to update verification status:", error);
+      
+      if (error.response?.data?.message) {
+        setError(error.response.data.message);
+      } else {
+        setError("Gagal memperbarui status verifikasi. Silakan coba lagi.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Modal handlers
   const openEditModal = (company: Company): void => {
     setSelectedCompany(company);
@@ -418,6 +487,8 @@ const ManagementCompanyPage: React.FC = () => {
             youtube: "",
             tiktok: "",
             status_verifikasi: detailedCompany.statusVerifikasi || "",
+            catatan_verifikasi: detailedCompany.catatanVerifikasi,
+            verified_at: detailedCompany.verifiedAt,
             user_id: 0,
             created_at: detailedCompany.createdAt || "",
             updated_at: "",
@@ -451,6 +522,7 @@ const ManagementCompanyPage: React.FC = () => {
     setShowModal(false);
     setShowDeleteModal(false);
     setShowDetailModal(false);
+    setShowVerificationModal(false);
     setSelectedCompany(null);
     setSelectedCompanyDetail(null);
     setError("");
@@ -655,6 +727,19 @@ const ManagementCompanyPage: React.FC = () => {
     }
   };
 
+  const getVerificationIcon = (status: string) => {
+    switch (status) {
+      case "terverifikasi":
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case "ditolak":
+        return <XCircle className="w-4 h-4 text-red-600" />;
+      case "belum_verifikasi":
+        return <Clock className="w-4 h-4 text-yellow-600" />;
+      default:
+        return <Clock className="w-4 h-4 text-gray-600" />;
+    }
+  };
+
   // Helper function to parse JSON arrays safely
   const parseJsonArray = (jsonString: string): string[] => {
     try {
@@ -706,7 +791,7 @@ const ManagementCompanyPage: React.FC = () => {
   }
 
   // Error state (for fetch errors, not form errors)
-  if (error && !showModal && !showDeleteModal) {
+  if (error && !showModal && !showDeleteModal && !showVerificationModal) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <PageBreadcrumb pageTitle="Manajemen Perusahaan" />
@@ -728,7 +813,7 @@ const ManagementCompanyPage: React.FC = () => {
       <PageBreadcrumb pageTitle="Manajemen Perusahaan" />
 
       <div className="space-y-4 sm:space-y-6">
-        {/* Header Section - Removed Add Company Button */}
+        {/* Header Section */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 sm:p-6">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
@@ -777,7 +862,6 @@ const ManagementCompanyPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Stats Cards */}
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 sm:p-6">
@@ -871,9 +955,12 @@ const ManagementCompanyPage: React.FC = () => {
                           <p className="font-medium text-gray-900 dark:text-white">
                             {company.companyName}
                           </p>
-                          <span className={getStatusBadge(company.status)}>
-                            {getStatusLabel(company.status)}
-                          </span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={getStatusBadge(company.status)}>
+                              {getStatusLabel(company.status)}
+                            </span>
+                            {getVerificationIcon(company.statusVerifikasi || "")}
+                          </div>
                         </div>
                       </div>
                       <div className="flex space-x-2">
@@ -881,13 +968,23 @@ const ManagementCompanyPage: React.FC = () => {
                           onClick={() => openDetailModal(company)}
                           className="text-green-600 dark:text-green-400 hover:text-green-900 dark:hover:text-green-300"
                           type="button"
+                          title="Lihat Detail"
                         >
                           <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => openVerificationModal(company)}
+                          className="text-purple-600 dark:text-purple-400 hover:text-purple-900 dark:hover:text-purple-300"
+                          type="button"
+                          title="Verifikasi"
+                        >
+                          <Award className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => openEditModal(company)}
                           className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
                           type="button"
+                          title="Edit"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
@@ -895,6 +992,7 @@ const ManagementCompanyPage: React.FC = () => {
                           onClick={() => openDeleteModal(company)}
                           className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                           type="button"
+                          title="Hapus"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -990,9 +1088,12 @@ const ManagementCompanyPage: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={getStatusBadge(company.status)}>
-                          {getStatusLabel(company.status)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={getStatusBadge(company.status)}>
+                            {getStatusLabel(company.status)}
+                          </span>
+                          {getVerificationIcon(company.statusVerifikasi || "")}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                         <div>{company.email}</div>
@@ -1026,6 +1127,14 @@ const ManagementCompanyPage: React.FC = () => {
                             title="Lihat Detail"
                           >
                             <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openVerificationModal(company)}
+                            className="text-purple-600 dark:text-purple-400 hover:text-purple-900 dark:hover:text-purple-300"
+                            type="button"
+                            title="Verifikasi"
+                          >
+                            <Award className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => openEditModal(company)}
@@ -1086,6 +1195,93 @@ const ManagementCompanyPage: React.FC = () => {
           )}
         </div>
 
+        {/* Verification Modal */}
+        {showVerificationModal && selectedCompany && (
+          <div className="fixed inset-0 bg-white/50 dark:bg-black/50 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <div className="bg-white shadow-2xl border-2 border-gray-200 dark:border-gray-600 dark:bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-md">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-shrink-0 w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
+                  <Award className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Verifikasi Perusahaan
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {selectedCompany.companyName}
+                  </p>
+                </div>
+              </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-200 rounded text-sm">
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={(e) => { e.preventDefault(); handleVerification(); }} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Status Verifikasi <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={verificationStatus}
+                    onChange={(e) => setVerificationStatus(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    required
+                    disabled={isSubmitting}
+                  >
+                    <option value="belum_verifikasi">Belum Verifikasi</option>
+                    <option value="terverifikasi">Terverifikasi</option>
+                    <option value="ditolak">Ditolak</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Catatan Verifikasi
+                  </label>
+                  <textarea
+                    value={verificationNote}
+                    onChange={(e) => setVerificationNote(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    disabled={isSubmitting}
+                    placeholder="Tambahkan catatan verifikasi (opsional)"
+                    maxLength={1000}
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {verificationNote.length}/1000 karakter
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={closeVerificationModal}
+                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    disabled={isSubmitting}
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex-1 px-4 py-2 bg-purple-600 dark:bg-purple-500 text-white rounded-lg hover:bg-purple-700 dark:hover:bg-purple-600 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Award className="w-4 h-4" />
+                    )}
+                    {isSubmitting ? "Memperbarui..." : "Perbarui Status"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* Detail Modal */}
         {showDetailModal && selectedCompanyDetail && (
           <div className="fixed inset-0 bg-white/50 dark:bg-black/50 backdrop-blur-md flex items-center justify-center z-99999 p-4">
@@ -1126,7 +1322,7 @@ const ManagementCompanyPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="p-6 space-y-6">
-                  {/* Company Header with Logo */}
+                  {/* Company Header with Logo and Verification Status */}
                   <div className="flex flex-col sm:flex-row gap-6">
                     <div className="flex-shrink-0">
                       {selectedCompanyDetail.logo ? (
@@ -1182,14 +1378,35 @@ const ManagementCompanyPage: React.FC = () => {
                         <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm font-medium">
                           {selectedCompanyDetail.industri}
                         </span>
+                        <div className="flex items-center gap-1">
+                          {getVerificationIcon(selectedCompanyDetail.status_verifikasi)}
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                            {selectedCompanyDetail.status_verifikasi === "terverifikasi" && "Terverifikasi"}
+                            {selectedCompanyDetail.status_verifikasi === "ditolak" && "Ditolak"}
+                            {selectedCompanyDetail.status_verifikasi === "belum_verifikasi" && "Belum Verifikasi"}
+                          </span>
+                        </div>
                       </div>
                       <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
                         {selectedCompanyDetail.deskripsi ||
                           "Tidak ada deskripsi"}
                       </p>
+                      
+                      {/* Verification Details */}
+                      {selectedCompanyDetail.catatan_verifikasi && (
+                        <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                          <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-1">
+                            Catatan Verifikasi:
+                          </h4>
+                          <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                            {selectedCompanyDetail.catatan_verifikasi}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
+                  {/* Rest of the detail modal content remains the same... */}
                   {/* Company Information Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Basic Information */}
@@ -1231,14 +1448,14 @@ const ManagementCompanyPage: React.FC = () => {
                               {selectedCompanyDetail.nib || "Tidak tersedia"}
                             </p>
                           </div>
-                        </div>
+</div>
                       </div>
                     </div>
 
                     {/* Contact Information */}
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                       <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                        <Mail className="w-5 h-5" />
+                        <Phone className="w-5 h-5" />
                         Kontak
                       </h4>
                       <div className="space-y-3">
@@ -1264,8 +1481,8 @@ const ManagementCompanyPage: React.FC = () => {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-start gap-3">
-                          <Globe className="w-4 h-4 text-gray-500 dark:text-gray-400 mt-1" />
+                        <div className="flex items-center gap-3">
+                          <Globe className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                           <div>
                             <span className="text-sm text-gray-500 dark:text-gray-400">
                               Website:
@@ -1289,233 +1506,187 @@ const ManagementCompanyPage: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                  </div>
 
-                    {/* Location Information */}
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                        <MapPin className="w-5 h-5" />
-                        Lokasi
-                      </h4>
-                      <div className="space-y-3">
-                        <div>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            Provinsi:
-                          </span>
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {selectedCompanyDetail.province.name}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            Kabupaten/Kota:
-                          </span>
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {selectedCompanyDetail.regency.name}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            Alamat Lengkap:
-                          </span>
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {selectedCompanyDetail.alamat_lengkap}
-                          </p>
-                        </div>
+                  {/* Location Information */}
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                      <MapPin className="w-5 h-5" />
+                      Lokasi
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                          Provinsi:
+                        </span>
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {selectedCompanyDetail.province.name}
+                        </p>
                       </div>
-                    </div>
-
-                    {/* Company Culture */}
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                        <Award className="w-5 h-5" />
-                        Budaya Perusahaan
-                      </h4>
-                      <div className="space-y-3">
-                        <div>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            Visi:
-                          </span>
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {selectedCompanyDetail.visi || "Tidak tersedia"}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            Misi:
-                          </span>
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {selectedCompanyDetail.misi || "Tidak tersedia"}
-                          </p>
-                        </div>
+                      <div>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                          Kabupaten/Kota:
+                        </span>
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {selectedCompanyDetail.regency.name}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                          Alamat Lengkap:
+                        </span>
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {selectedCompanyDetail.alamat_lengkap}
+                        </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Company Values */}
-                  {selectedCompanyDetail.nilai_nilai &&
-                    parseJsonArray(selectedCompanyDetail.nilai_nilai).length >
-                      0 && (
-                      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                          Nilai-Nilai Perusahaan
+                  {/* Company Vision, Mission, Values */}
+                  <div className="space-y-6">
+                    {/* Vision */}
+                    {selectedCompanyDetail.visi && (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                        <h4 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                          Visi
                         </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {parseJsonArray(
-                            selectedCompanyDetail.nilai_nilai
-                          ).map((nilai, index) => (
-                            <span
-                              key={index}
-                              className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm"
-                            >
-                              {nilai}
-                            </span>
-                          ))}
-                        </div>
+                        <p className="text-blue-700 dark:text-blue-300 leading-relaxed">
+                          {selectedCompanyDetail.visi}
+                        </p>
                       </div>
                     )}
 
-                  {/* Certificates */}
-                  {selectedCompanyDetail.sertifikat &&
-                    parseJsonArray(selectedCompanyDetail.sertifikat).length >
-                      0 && (
-                      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                          Sertifikat
+                    {/* Mission */}
+                    {selectedCompanyDetail.misi && (
+                      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                        <h4 className="text-lg font-semibold text-green-800 dark:text-green-200 mb-3">
+                          Misi
                         </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {parseJsonArray(selectedCompanyDetail.sertifikat).map(
-                            (sertifikat, index) => (
-                              <span
-                                key={index}
-                                className="px-3 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full text-sm"
-                              >
-                                {sertifikat}
-                              </span>
+                        <p className="text-green-700 dark:text-green-300 leading-relaxed">
+                          {selectedCompanyDetail.misi}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Values */}
+                    {selectedCompanyDetail.nilai_nilai && 
+                     selectedCompanyDetail.nilai_nilai !== "[]" && 
+                     parseJsonArray(selectedCompanyDetail.nilai_nilai).length > 0 && (
+                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
+                        <h4 className="text-lg font-semibold text-purple-800 dark:text-purple-200 mb-3">
+                          Nilai-Nilai
+                        </h4>
+                        <ul className="list-disc list-inside space-y-1 text-purple-700 dark:text-purple-300">
+                          {parseJsonArray(selectedCompanyDetail.nilai_nilai).map(
+                            (value: string, index: number) => (
+                              <li key={index}>{value}</li>
                             )
                           )}
-                        </div>
+                        </ul>
                       </div>
                     )}
-
-                  {/* Social Media Links */}
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                      Media Sosial
-                    </h4>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {formatSocialLink(
-                        selectedCompanyDetail.linkedin,
-                        "LinkedIn"
-                      )}
-                      {formatSocialLink(
-                        selectedCompanyDetail.instagram,
-                        "Instagram"
-                      )}
-                      {formatSocialLink(
-                        selectedCompanyDetail.facebook,
-                        "Facebook"
-                      )}
-                      {formatSocialLink(
-                        selectedCompanyDetail.twitter,
-                        "Twitter"
-                      )}
-                      {formatSocialLink(
-                        selectedCompanyDetail.youtube,
-                        "YouTube"
-                      )}
-                      {formatSocialLink(selectedCompanyDetail.tiktok, "TikTok")}
-                      {!selectedCompanyDetail.linkedin &&
-                        !selectedCompanyDetail.instagram &&
-                        !selectedCompanyDetail.facebook &&
-                        !selectedCompanyDetail.twitter &&
-                        !selectedCompanyDetail.youtube &&
-                        !selectedCompanyDetail.tiktok && (
-                          <p className="text-gray-500 dark:text-gray-400 col-span-full">
-                            Tidak ada media sosial yang terdaftar
-                          </p>
-                        )}
-                    </div>
                   </div>
 
-                  {/* Documents */}
-                  {selectedCompanyDetail.bukti_wajib_lapor && (
+                  {/* Social Media Links */}
+                  {(selectedCompanyDetail.linkedin ||
+                    selectedCompanyDetail.instagram ||
+                    selectedCompanyDetail.facebook ||
+                    selectedCompanyDetail.twitter ||
+                    selectedCompanyDetail.youtube ||
+                    selectedCompanyDetail.tiktok) && (
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                       <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                        Dokumen
+                        Media Sosial
                       </h4>
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-3">
-                          <FileText className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                          <div>
-                            <span className="text-sm text-gray-500 dark:text-gray-400">
-                              Bukti Wajib Lapor:
-                            </span>
-                            <a
-                              href={getImageUrl(
-                                selectedCompanyDetail.bukti_wajib_lapor
-                              )}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-1"
-                            >
-                              Lihat Dokumen
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          </div>
-                        </div>
+                      <div className="flex flex-wrap gap-3">
+                        {formatSocialLink(selectedCompanyDetail.linkedin, "LinkedIn")}
+                        {formatSocialLink(selectedCompanyDetail.instagram, "Instagram")}
+                        {formatSocialLink(selectedCompanyDetail.facebook, "Facebook")}
+                        {formatSocialLink(selectedCompanyDetail.twitter, "Twitter")}
+                        {formatSocialLink(selectedCompanyDetail.youtube, "YouTube")}
+                        {formatSocialLink(selectedCompanyDetail.tiktok, "TikTok")}
                       </div>
                     </div>
                   )}
 
-                  {/* Timestamps */}
+                  {/* Certificates */}
+                  {selectedCompanyDetail.sertifikat && 
+                   selectedCompanyDetail.sertifikat !== "[]" && 
+                   parseJsonArray(selectedCompanyDetail.sertifikat).length > 0 && (
+                    <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
+                      <h4 className="text-lg font-semibold text-orange-800 dark:text-orange-200 mb-3 flex items-center gap-2">
+                        <Award className="w-5 h-5" />
+                        Sertifikat
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {parseJsonArray(selectedCompanyDetail.sertifikat).map(
+                          (cert: string, index: number) => (
+                            <div
+                              key={index}
+                              className="bg-white dark:bg-gray-800 p-3 rounded border border-orange-200 dark:border-orange-800"
+                            >
+                              <p className="text-sm text-orange-700 dark:text-orange-300">
+                                {cert}
+                              </p>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Company Registration Details */}
                   <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                      Informasi Sistem
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      Informasi Registrasi
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                          Bukti Wajib Lapor:
+                        </span>
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {selectedCompanyDetail.bukti_wajib_lapor || "Tidak tersedia"}
+                        </p>
+                      </div>
                       <div>
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                           Tanggal Dibuat:
                         </span>
                         <p className="font-medium text-gray-900 dark:text-white">
-                          {new Date(
-                            selectedCompanyDetail.created_at
-                          ).toLocaleDateString("id-ID", {
+                          {new Date(selectedCompanyDetail.created_at).toLocaleDateString("id-ID", {
                             year: "numeric",
                             month: "long",
                             day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
                           })}
                         </p>
                       </div>
-                      <div>
-                        <span className="text-sm text-gray-500 dark:text-gray-400">
-                          Terakhir Diperbarui:
-                        </span>
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          {new Date(
-                            selectedCompanyDetail.updated_at
-                          ).toLocaleDateString("id-ID", {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
+                      {selectedCompanyDetail.verified_at && (
+                        <div>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            Tanggal Verifikasi:
+                          </span>
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {new Date(selectedCompanyDetail.verified_at).toLocaleDateString("id-ID", {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                            })}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Modal Footer */}
-              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+              <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4">
                 <div className="flex justify-end">
                   <button
                     onClick={closeModals}
-                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                    className="px-4 py-2 bg-gray-600 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
                     type="button"
                   >
                     Tutup
@@ -1526,25 +1697,24 @@ const ManagementCompanyPage: React.FC = () => {
           </div>
         )}
 
-        {/* Edit Modal - Only for editing existing companies */}
+        {/* Edit Modal */}
         {showModal && selectedCompany && (
           <div className="fixed inset-0 bg-white/50 dark:bg-black/50 backdrop-blur-md flex items-center justify-center z-50 p-4">
             <div className="bg-white shadow-2xl border-2 border-gray-200 dark:border-gray-600 dark:bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Edit Perusahaan
-                </h3>
-                <button
-                  onClick={closeModals}
-                  className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
-                  type="button"
-                  disabled={isSubmitting}
-                >
-                  <X className="w-5 h-5" />
-                </button>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="flex-shrink-0 w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                  <Edit className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Edit Perusahaan
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Perbarui informasi perusahaan
+                  </p>
+                </div>
               </div>
 
-              {/* Display error message in modal */}
               {error && (
                 <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-200 rounded text-sm">
                   {error}
@@ -1552,9 +1722,9 @@ const ManagementCompanyPage: React.FC = () => {
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Nama Perusahaan <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -1566,12 +1736,12 @@ const ManagementCompanyPage: React.FC = () => {
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       required
                       disabled={isSubmitting}
-                      placeholder="Masukkan nama perusahaan"
+                      maxLength={255}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Email <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -1583,12 +1753,12 @@ const ManagementCompanyPage: React.FC = () => {
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       required
                       disabled={isSubmitting}
-                      placeholder="Masukkan alamat email"
+                      maxLength={255}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Nomor Telepon <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -1600,33 +1770,31 @@ const ManagementCompanyPage: React.FC = () => {
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       required
                       disabled={isSubmitting}
-                      placeholder="Masukkan nomor telepon"
+                      maxLength={20}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Status <span className="text-red-500">*</span>
                     </label>
                     <select
                       value={formData.status}
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                        handleFormChange(
-                          "status",
-                          e.target.value as Company["status"]
-                        )
+                        handleFormChange("status", e.target.value as "active" | "inactive" | "pending")
                       }
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      required
                       disabled={isSubmitting}
                     >
-                      <option value="active">Aktif</option>
-                      <option value="inactive">Tidak Aktif</option>
-                      <option value="pending">Menunggu</option>
+                      <option value="active">Terverifikasi</option>
+                      <option value="inactive">Ditolak</option>
+                      <option value="pending">Belum Verifikasi</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Provinsi <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -1636,14 +1804,10 @@ const ManagementCompanyPage: React.FC = () => {
                       }
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       required
-                      disabled={isLoadingProvinces || isSubmitting}
+                      disabled={isSubmitting || isLoadingProvinces}
                     >
-                      <option value="">
-                        {isLoadingProvinces
-                          ? "Memuat provinsi..."
-                          : "Pilih Provinsi"}
-                      </option>
-                      {provinces.map((province) => (
+                      <option value="">Pilih Provinsi</option>
+                      {provinces.map((province: ProvinceOption) => (
                         <option key={province.id} value={province.id}>
                           {province.name}
                         </option>
@@ -1652,7 +1816,7 @@ const ManagementCompanyPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Kabupaten/Kota <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -1662,37 +1826,21 @@ const ManagementCompanyPage: React.FC = () => {
                       }
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       required
-                      disabled={
-                        isLoadingRegencies ||
-                        isSubmitting ||
-                        !formData.provinceId
-                      }
+                      disabled={isSubmitting || isLoadingRegencies || !formData.provinceId}
                     >
-                      <option value="">
-                        {isLoadingRegencies
-                          ? "Memuat kabupaten/kota..."
-                          : !formData.provinceId
-                          ? "Pilih provinsi terlebih dahulu"
-                          : "Pilih Kabupaten/Kota"}
-                      </option>
-                      {regencies.map((regency) => (
+                      <option value="">Pilih Kabupaten/Kota</option>
+                      {regencies.map((regency: RegencyOption) => (
                         <option key={regency.id} value={regency.id}>
                           {regency.name}
                         </option>
                       ))}
                     </select>
-                    {isLoadingRegencies && (
-                      <div className="flex items-center gap-2 mt-2 text-sm text-gray-500 dark:text-gray-400">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Memuat data kabupaten/kota...
-                      </div>
-                    )}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Alamat <span className="text-red-500">*</span>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Alamat Lengkap <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     value={formData.address}
@@ -1703,12 +1851,12 @@ const ManagementCompanyPage: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     required
                     disabled={isSubmitting}
-                    placeholder="Masukkan alamat lengkap perusahaan"
+                    maxLength={500}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Deskripsi
                   </label>
                   <textarea
@@ -1716,10 +1864,11 @@ const ManagementCompanyPage: React.FC = () => {
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                       handleFormChange("description", e.target.value)
                     }
-                    rows={3}
+                    rows={4}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     disabled={isSubmitting}
-                    placeholder="Masukkan deskripsi perusahaan (opsional)"
+                    maxLength={1000}
+                    placeholder="Deskripsi singkat tentang perusahaan"
                   />
                 </div>
 
@@ -1734,9 +1883,7 @@ const ManagementCompanyPage: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={
-                      isLoadingProvinces || isLoadingRegencies || isSubmitting
-                    }
+                    disabled={isSubmitting}
                     className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {isSubmitting ? (
@@ -1744,7 +1891,7 @@ const ManagementCompanyPage: React.FC = () => {
                     ) : (
                       <Save className="w-4 h-4" />
                     )}
-                    {isSubmitting ? "Memperbarui..." : "Perbarui"}
+                    {isSubmitting ? "Menyimpan..." : "Simpan Perubahan"}
                   </button>
                 </div>
               </form>
@@ -1752,7 +1899,7 @@ const ManagementCompanyPage: React.FC = () => {
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
+        {/* Delete Modal */}
         {showDeleteModal && selectedCompany && (
           <div className="fixed inset-0 bg-white/50 dark:bg-black/50 backdrop-blur-md flex items-center justify-center z-50 p-4">
             <div className="bg-white shadow-2xl border-2 border-gray-200 dark:border-gray-600 dark:bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-md">
@@ -1765,7 +1912,7 @@ const ManagementCompanyPage: React.FC = () => {
                     Hapus Perusahaan
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Tindakan ini tidak dapat dibatalkan
+                    Konfirmasi penghapusan
                   </p>
                 </div>
               </div>
@@ -1776,26 +1923,37 @@ const ManagementCompanyPage: React.FC = () => {
                 </div>
               )}
 
-              <p className="text-gray-700 dark:text-gray-300 mb-6">
-                Apakah Anda yakin ingin menghapus perusahaan{" "}
-                <strong>{selectedCompany.companyName}</strong>? Semua data
-                terkait akan hilang secara permanen.
-              </p>
+              <div className="mb-6">
+                <p className="text-gray-700 dark:text-gray-300 mb-2">
+                  Apakah Anda yakin ingin menghapus perusahaan berikut?
+                </p>
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    {selectedCompany.companyName}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {selectedCompany.email}
+                  </p>
+                </div>
+                <p className="text-red-600 dark:text-red-400 text-sm mt-3 font-medium">
+                  Tindakan ini tidak dapat dibatalkan!
+                </p>
+              </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
+                  type="button"
                   onClick={closeModals}
                   className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  type="button"
                   disabled={isSubmitting}
                 >
                   Batal
                 </button>
                 <button
-                  onClick={handleDelete}
-                  className="flex-1 px-4 py-2 bg-red-600 dark:bg-red-500 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-600 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   type="button"
+                  onClick={handleDelete}
                   disabled={isSubmitting}
+                  className="flex-1 px-4 py-2 bg-red-600 dark:bg-red-500 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-600 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {isSubmitting ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
