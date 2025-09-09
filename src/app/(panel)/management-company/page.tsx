@@ -88,7 +88,7 @@ interface Company {
   phone: string;
   address: string;
   description?: string;
-  status: "active" | "inactive" | "pending";
+  status: string;
   provinceId: string;
   regencyId: string | null;
   province?: string;
@@ -108,7 +108,7 @@ interface CompanyFormData {
   phone: string;
   address: string;
   description: string;
-  status: "active" | "inactive" | "pending";
+  status: string;
   provinceId: string;
   regencyId: string;
 }
@@ -170,7 +170,7 @@ const ManagementCompanyPage: React.FC = () => {
     phone: "",
     address: "",
     description: "",
-    status: "active",
+    status: "",
     provinceId: "",
     regencyId: "",
   });
@@ -222,12 +222,7 @@ const ManagementCompanyPage: React.FC = () => {
       phone: item.no_telp,
       address: item.alamat_lengkap,
       description: item.deskripsi,
-      status:
-        item.status_verifikasi === "terverifikasi"
-          ? "active"
-          : item.status_verifikasi === "ditolak"
-          ? "inactive"
-          : "pending",
+      status: item.status_verifikasi,
       provinceId: item.province_id,
       regencyId: item.regencie_id,
       province: item.province.name,
@@ -255,9 +250,7 @@ const ManagementCompanyPage: React.FC = () => {
   const fetchProvinces = async (): Promise<void> => {
     try {
       setIsLoadingProvinces(true);
-      const response = await apiBissaKerja.get(
-        "account-management/get-company-by-location"
-      );
+      const response = await apiBissaKerja.get("provinces");
       console.log("Fetched Provinces:", response.data);
 
       if (response.data && Array.isArray(response.data.data)) {
@@ -280,7 +273,7 @@ const ManagementCompanyPage: React.FC = () => {
     try {
       setIsLoadingRegencies(true);
       const response = await apiBissaKerja.get(
-        `account-management/get-regencies/${provinceId}`
+        `regencies?province_id=${provinceId}`
       );
       console.log("Fetched Regencies:", response.data);
 
@@ -631,11 +624,11 @@ const ManagementCompanyPage: React.FC = () => {
   const getStatusBadge = (status: string): string => {
     const baseClasses = "px-2 py-1 rounded-full text-xs font-medium";
     switch (status) {
-      case "active":
+      case "terverifikasi":
         return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
-      case "inactive":
+      case "belum":
         return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-      case "pending":
+      case "proses":
         return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
       default:
         return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
@@ -644,11 +637,11 @@ const ManagementCompanyPage: React.FC = () => {
 
   const getStatusLabel = (status: string): string => {
     switch (status) {
-      case "active":
+      case "terverifikasi":
         return "Terverifikasi";
-      case "inactive":
-        return "Ditolak";
-      case "pending":
+      case "belum":
+        return "Tidak Aktif";
+      case "proses":
         return "Belum Verifikasi";
       default:
         return "Tidak Diketahui";
@@ -691,13 +684,13 @@ const ManagementCompanyPage: React.FC = () => {
   // Statistics calculations
   const totalCompanies: number = companies.length;
   const activeCompanies: number = companies.filter(
-    (company: Company) => company.status === "active"
+    (company: Company) => company.status === "terverifikasi"
   ).length;
   const inactiveCompanies: number = companies.filter(
-    (company: Company) => company.status === "inactive"
+    (company: Company) => company.status === "belum"
   ).length;
   const pendingCompanies: number = companies.filter(
-    (company: Company) => company.status === "pending"
+    (company: Company) => company.status === "proses"
   ).length;
 
   // Loading state
@@ -769,9 +762,9 @@ const ManagementCompanyPage: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="all">Semua Status</option>
-                <option value="active">Terverifikasi</option>
-                <option value="inactive">Ditolak</option>
-                <option value="pending">Belum Verifikasi</option>
+                <option value="terverifikasi">Terverifikasi</option>
+                <option value="belum">Tidak Aktif</option>
+                <option value="proses">Belum Verifikasi</option>
               </select>
             </div>
           </div>
@@ -819,7 +812,7 @@ const ManagementCompanyPage: React.FC = () => {
               </div>
               <div className="ml-3 sm:ml-4">
                 <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">
-                  Ditolak
+                  Tidak Aktif
                 </p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
                   {inactiveCompanies}
@@ -1160,23 +1153,11 @@ const ManagementCompanyPage: React.FC = () => {
                       <div className="flex flex-wrap gap-3 mb-4">
                         <span
                           className={getStatusBadge(
-                            selectedCompanyDetail.status_verifikasi ===
-                              "terverifikasi"
-                              ? "active"
-                              : selectedCompanyDetail.status_verifikasi ===
-                                "ditolak"
-                              ? "inactive"
-                              : "pending"
+                            selectedCompanyDetail.status_verifikasi
                           )}
                         >
                           {getStatusLabel(
-                            selectedCompanyDetail.status_verifikasi ===
-                              "terverifikasi"
-                              ? "active"
-                              : selectedCompanyDetail.status_verifikasi ===
-                                "ditolak"
-                              ? "inactive"
-                              : "pending"
+                            selectedCompanyDetail.status_verifikasi
                           )}
                         </span>
                         <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm font-medium">
@@ -1619,9 +1600,9 @@ const ManagementCompanyPage: React.FC = () => {
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       disabled={isSubmitting}
                     >
-                      <option value="active">Aktif</option>
-                      <option value="inactive">Tidak Aktif</option>
-                      <option value="pending">Menunggu</option>
+                      <option value="terverifikasi">Terverifikasi</option>
+                      <option value="belum">Tidak Aktif</option>
+                      <option value="proses">Belum Terverifikasi</option>
                     </select>
                   </div>
 
