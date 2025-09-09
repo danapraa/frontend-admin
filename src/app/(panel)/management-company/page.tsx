@@ -511,7 +511,7 @@ const ManagementCompanyPage: React.FC = () => {
       console.log("Updating company with data:", updateData);
 
       const response = await apiBissaKerja.patch(
-        `account-management/company-by-location/${companyId}/update`,
+        `account-management/update-company-by-location/${companyId}`,
         updateData
       );
 
